@@ -1,15 +1,19 @@
-use rand::prelude::*;
-use std::thread::sleep;
-use std::time::Duration;
+struct Page([u8; 65_536]);
+
+impl Page {
+    fn new() -> Self {
+        Self([0; 65_536])
+    }
+}
 
 fn main() {
+    let mut vv = Vec::<Vec<Page>>::with_capacity(0);
     loop {
-        let n: usize = random::<usize>() % 1024;
-        println!("{}", n);
-        let mut b = Box::new(Vec::<[u8; 32 * 1024]>::with_capacity(n));
-        b.iter_mut()
-            .for_each(|e| e.iter_mut().for_each(|x| *x += 1));
-
-        sleep(Duration::from_secs(5));
+        let mut v = Vec::<Page>::with_capacity(0);
+        for _ in 0..256 {
+            v.push(Page::new());
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        vv.push(v);
     }
 }
