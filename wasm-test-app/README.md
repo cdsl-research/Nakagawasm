@@ -25,4 +25,6 @@ cargo build --target=wasm32-wasi
     <dd>メモリ使用量が増加し続ける．</dd>
     <dt>b.rs</dt>
     <dd>メモリリークによってメモリ使用量が増加し続ける．a.rsと見かけ上はまったく同一になるはずである．</dd>
+    <dt>c.rs</dt>
+    <dd></dd>
 </dl>
