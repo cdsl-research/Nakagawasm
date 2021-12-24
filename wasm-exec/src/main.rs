@@ -1,30 +1,63 @@
-use anyhow::Result;
-use std::env;
-use wasmtime::*;
-use wasmtime_wasi::sync::WasiCtxBuilder;
+use std::{process::Stdio, str::from_utf8};
+use tokio::{
+    fs::File,
+    io::AsyncWriteExt,
+    process::{Child, Command},
+    time::{sleep_until, Duration, Instant},
+};
+use tracing::info;
+use tracing_subscriber;
 
-fn main() -> Result<()> {
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        panic!("not match args len");
+async fn get_child_rss(child: &Child) -> anyhow::Result<u64> {
+    let ps = Command::new("ps")
+        .arg("-p")
+        .arg(child.id().expect("cannot get pid").to_string())
+        .arg("o")
+        .arg("rss")
+        .arg("--no-headers")
+        .stdout(Stdio::piped())
+        .spawn()?;
+
+    let rss = ps.wait_with_output().await?;
+    let rss = from_utf8(&rss.stdout)?.trim().parse::<u64>()?;
+
+    Ok(rss)
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt::init();
+
+    // let mut child = Command::new("wasmtime")
+    //     .arg("../wasm-test-app/target/wasm32-wasi/debug/c.wasm")
+    //     .stdout(Stdio::piped())
+    //     .stderr(Stdio::piped())
+    //     .spawn()
+    //     .expect("failed to spawn");
+
+    let mut child = Command::new("../wasm-test-app/target/debug/c")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn child process");
+
+    info!("child process spawned!");
+
+    let mut file = File::create("cnative.txt").await?;
+
+    for _ in 0..200 {
+        let instant = Instant::now();
+        let tick = sleep_until(instant + Duration::from_millis(1000));
+        let rss = get_child_rss(&child).await?;
+        info!(rss);
+        file.write(format!("{},{}\n", chrono::Local::now().to_string(), rss).as_bytes())
+            .await?;
+        tick.await;
     }
 
-    let engine = Engine::default();
-    let mut linker = Linker::new(&engine);
-    wasmtime_wasi::add_to_linker(&mut linker, |s| s)?;
-
-    let wasi = WasiCtxBuilder::new()
-        .inherit_stdio()
-        .inherit_args()?
-        .build();
-    let mut store = Store::new(&engine, wasi);
-
-    let module = Module::from_file(&engine, args[1].as_str())?;
-    linker.module(&mut store, "", &module)?;
-    linker
-        .get_default(&mut store, "")?
-        .typed::<(), (), _>(&store)?
-        .call(&mut store, ())?;
+    child.start_kill()?;
+    let out = child.wait_with_output().await?;
+    info!("{:?}", out);
 
     Ok(())
 }

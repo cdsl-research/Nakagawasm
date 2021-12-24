@@ -1,5 +1,8 @@
 use rand::prelude::*;
-use std::{thread::sleep, time::Duration};
+use std::{
+    thread::sleep,
+    time::{Duration, Instant},
+};
 
 pub struct Page([u8; 65_536]);
 
@@ -11,12 +14,13 @@ impl Page {
 
 fn main() {
     loop {
+        let st = Instant::now();
         let n = random::<usize>() % 1024;
         let mut v = Vec::<Page>::with_capacity(n);
         print!("{:?}", (0..v.capacity()));
         for _ in 0..(v.capacity()) {
             v.push(Page::new());
         }
-        sleep(Duration::from_millis(1000));
+        sleep(Duration::from_millis(1000) - (Instant::now() - st));
     }
 }
