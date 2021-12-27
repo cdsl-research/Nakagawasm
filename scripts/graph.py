@@ -1,13 +1,10 @@
 from __future__ import annotations
-import pandas as pd
-import matplotlib
-from matplotlib.font_manager import FontProperties
-import matplotlib.pyplot as plt
 
-font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
-font_prop = FontProperties(fname=font_path)
-matplotlib.rcParams["font.family"] = font_prop.get_name()
-plt.rcParams["font.size"] = 14
+import japanize_matplotlib
+import matplotlib.pyplot as plt
+import pandas as pd
+
+japanize_matplotlib.japanize()
 
 name = "cwasm"
 name = "cnative"
