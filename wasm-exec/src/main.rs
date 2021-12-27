@@ -28,24 +28,24 @@ async fn get_child_rss(child: &Child) -> anyhow::Result<u64> {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    // let mut child = Command::new("wasmtime")
-    //     .arg("../wasm-test-app/target/wasm32-wasi/debug/c.wasm")
-    //     .stdout(Stdio::piped())
-    //     .stderr(Stdio::piped())
-    //     .spawn()
-    //     .expect("failed to spawn");
-
-    let mut child = Command::new("../wasm-test-app/target/debug/c")
+    let mut child = Command::new("wasmtime")
+        .arg("../wasm-test-app/target/wasm32-wasi/debug/d.wasm")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("failed to spawn child process");
+        .expect("failed to spawn");
+
+    // let mut child = Command::new("../wasm-test-app/target/debug/d")
+    //     .stdout(Stdio::piped())
+    //     .stderr(Stdio::piped())
+    //     .spawn()
+    //     .expect("failed to spawn child process");
 
     info!("child process spawned!");
 
-    let mut file = File::create("cnative.txt").await?;
+    let mut file = File::create("dwasm.txt").await?;
 
-    for _ in 0..200 {
+    for _ in 0..10 {
         let instant = Instant::now();
         let tick = sleep_until(instant + Duration::from_millis(1000));
         let rss = get_child_rss(&child).await?;
@@ -56,8 +56,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     child.start_kill()?;
-    let out = child.wait_with_output().await?;
-    info!("{:?}", out);
+    let out = child.wait_with_output().await?.stdout;
+    let out = from_utf8(out.as_ref())?;
+    println!("{}", out);
 
     Ok(())
 }
