@@ -28,5 +28,5 @@ cargo build --target=wasm32-wasi
     <dt>c.rs</dt>
     <dd>ランダムなサイズのメモリの確保と解放を繰り返す．</dd>
     <dt>d.rs</dt>
-    <dd></dd>
+    <dd>sin waveに従ってメモリの確保/解放のサイズを決定する．</dd>
 </dl>
