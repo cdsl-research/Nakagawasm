@@ -1,6 +1,11 @@
-use std::{io, path::{PathBuf, Path}, process::Stdio};
+use std::{
+    io,
+    path::{Path, PathBuf},
+    process::Stdio,
+};
 
 use tokio::process::{Child, Command};
+use uuid::Uuid;
 
 pub trait Executable {
     fn exec(&self, args: &[String]) -> io::Result<Child>;
@@ -47,6 +52,16 @@ impl Executable for NativeBinary {
 
 #[derive(Debug)]
 pub struct Pod<E: Executable> {
-    exe: E,
-    child: Child,
+    pub exe: E,
+    pub child: Child,
+    pub uuid: Uuid,
+}
+
+impl<E: Executable> Pod<E> {
+    pub fn new(exe: E) -> io::Result<Self> {
+        let child = exe.exec(&[])?;
+        let uuid = Uuid::new_v4();
+
+        Ok(Self { exe, child, uuid })
+    }
 }
