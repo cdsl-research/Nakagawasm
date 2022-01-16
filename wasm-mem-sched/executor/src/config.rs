@@ -14,7 +14,7 @@ pub struct ConfigEntry {
     pub count: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum ModuleKind {
     #[serde(rename = "wasm32-wasi")]
     Wasm32Wasi,
