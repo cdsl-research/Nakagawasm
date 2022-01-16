@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use tokio::fs;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -20,4 +21,12 @@ pub enum ModuleKind {
     Wasm32Wasi,
     #[serde(rename = "native")]
     Native,
+}
+
+impl Config {
+    pub async fn from_path(path: &Path) -> anyhow::Result<Self> {
+        let text = fs::read_to_string(&path).await?;
+        let conf = toml::from_str::<Config>(&text)?;
+        Ok(conf)
+    }
 }
