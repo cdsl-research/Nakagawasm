@@ -4,16 +4,13 @@ use std::{
     collections::HashMap,
     io,
     path::{Path, PathBuf},
-    process::Stdio,
+    process::{ExitStatus, Stdio},
     sync::Arc,
 };
 use tokio::{
     process::Command,
     signal::ctrl_c,
-    sync::{
-        mpsc::{self, Sender},
-        Mutex,
-    },
+    sync::{mpsc, oneshot, Mutex},
     task::JoinHandle,
 };
 use tracing::info;
@@ -76,13 +73,14 @@ impl InstanceSpec {
 pub struct Instance {
     pub spec: InstanceSpec,
     pub handler: JoinHandle<anyhow::Result<()>>,
+    pub stop_cmd_sender: Option<oneshot::Sender<()>>,
 }
 
 impl Instance {
     #[tracing::instrument]
     pub async fn spawn(
         spec: InstanceSpec,
-        status_sender: Sender<(Uuid, InstanceStatus)>,
+        status_sender: mpsc::Sender<(Uuid, InstanceStatus)>,
     ) -> anyhow::Result<Self> {
         let path = spec.module.path.as_path();
         let mut child = match spec.module.kind {
@@ -102,17 +100,33 @@ impl Instance {
         status_sender
             .send((
                 spec.uid,
-                InstanceStatus::Running(child.id().map(|pid| Pid(pid)).expect("")),
+                InstanceStatus::Running(child.id().map(|pid| Pid(pid)).ok_or_else(|| {
+                    anyhow::anyhow!("The instance {} is already finished.", spec.uid)
+                })?),
             ))
             .await?;
 
+        let (tx, rx) = oneshot::channel();
+
         let handler = tokio::spawn(async move {
-            child.wait().await?;
-            status_sender.send((spec.uid, InstanceStatus::Quit)).await?;
-            Ok(())
+            tokio::select! {
+                status = child.wait() => {
+                    status_sender.send((spec.uid, InstanceStatus::Quit(status?))).await?;
+                    Ok(())
+                },
+                _ = rx => {
+                    child.kill().await?;
+                    status_sender.send((spec.uid, InstanceStatus::Quit(child.wait().await?))).await?;
+                    Ok(())
+                }
+            }
         });
 
-        Ok(Self { spec, handler })
+        Ok(Self {
+            spec,
+            handler,
+            stop_cmd_sender: Some(tx),
+        })
     }
 }
 
@@ -123,7 +137,7 @@ pub struct Pid(pub u32);
 pub enum InstanceStatus {
     Starting,
     Running(Pid),
-    Quit,
+    Quit(ExitStatus),
 }
 
 #[derive(Debug, Parser)]
@@ -138,15 +152,14 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
-
     let conf = Config::from_path(Path::new(&cli.config)).await?;
 
     let instance_collector = Arc::new(Mutex::new(HashMap::<Uuid, Instance>::new()));
     let (tx, mut rx) = mpsc::channel::<(Uuid, InstanceStatus)>(100);
 
-    {
+    let mgr_handle = {
         let instance_collector = Arc::clone(&instance_collector);
-        let _mgr_handle = tokio::spawn(async move {
+        tokio::spawn(async move {
             loop {
                 tokio::select! {
                     status = rx.recv() => {
@@ -154,10 +167,14 @@ async fn main() -> anyhow::Result<()> {
                         info!("status({:?}) update recieved {:?}", status,uid);
                         instance_collector.lock().await.get_mut(&uid).unwrap().spec.status = status;
                     },
-                };
+                    _ = ctrl_c() => {
+                        info!("Got ctrl_c. instances: {:#?}", instance_collector.lock().await);
+                        break;
+                    }
+                }
             }
-        });
-    }
+        })
+    };
 
     for c in conf.entries.iter() {
         let module = Arc::new(Module::new(c.kind, &c.path).await?);
@@ -173,7 +190,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    ctrl_c().await?;
+    mgr_handle.await?;
 
     Ok(())
 }
