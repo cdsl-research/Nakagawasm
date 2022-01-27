@@ -146,43 +146,39 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let conf = Config::from_path(Path::new(&cli.config)).await?;
 
-    let instance_collector = Arc::new(Mutex::new(HashMap::<Uuid, Instance>::new()));
-    let (tx, mut rx) = mpsc::channel::<(Uuid, InstanceStatus)>(100);
+    let mgr_handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
+        let instance_collector = Arc::new(Mutex::new(HashMap::<Uuid, Instance>::new()));
+        let (status_sender, mut status_reciever) = mpsc::channel::<(Uuid, InstanceStatus)>(100);
+        for c in conf.entries.iter() {
+            let module = Arc::new(Module::new(c.kind, &c.path).await?);
+            for _ in 0..c.count {
+                let spec = InstanceSpec::new(Arc::clone(&module), Uuid::new_v4());
+                let tx = status_sender.clone();
+                let instance = Instance::spawn(spec, tx).await?;
 
-    let mgr_handle = {
-        let instance_collector = Arc::clone(&instance_collector);
-        tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    status = rx.recv() => {
-                        let (uid, status) = status.unwrap();
-                        info!("status({:?}) update recieved {:?}", status,uid);
-                        instance_collector.lock().await.get_mut(&uid).unwrap().spec.status = status;
-                    },
-                    _ = ctrl_c() => {
-                        info!("Got ctrl_c. instances: {:#?}", instance_collector.lock().await);
-                        break;
-                    }
+                instance_collector
+                    .lock()
+                    .await
+                    .insert(instance.spec.uid, instance);
+            }
+        }
+        loop {
+            tokio::select! {
+                status = status_reciever.recv() => {
+                    let (uid, status) = status.unwrap();
+                    info!("status({:?}) update recieved {:?}", status,uid);
+                    instance_collector.lock().await.get_mut(&uid).unwrap().spec.status = status;
+                },
+                _ = ctrl_c() => {
+                    info!("Got ctrl_c. instances: {:#?}", instance_collector.lock().await);
+                    break;
                 }
             }
-        })
-    };
-
-    for c in conf.entries.iter() {
-        let module = Arc::new(Module::new(c.kind, &c.path).await?);
-        for _ in 0..c.count {
-            let spec = InstanceSpec::new(module.clone(), Uuid::new_v4());
-            let tx = tx.clone();
-            let instance = Instance::spawn(spec, tx).await?;
-
-            instance_collector
-                .lock()
-                .await
-                .insert(instance.spec.uid, instance);
         }
-    }
+        Ok(())
+    });
 
-    mgr_handle.await?;
+    mgr_handle.await??;
 
     Ok(())
 }
