@@ -1,5 +1,6 @@
 use crate::config::{Config, ModuleKind};
 use clap::Parser;
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     io,
@@ -30,24 +31,15 @@ impl Module {
         Ok(Self {
             kind,
             path: path.to_owned(),
-            digest: Self::sha256(path).await?,
+            digest: Self::digestize(path).await?,
         })
     }
 
-    async fn sha256(path: &Path) -> io::Result<String> {
-        let mut digest = Command::new("sha256sum")
-            .arg(path)
-            .stdout(Stdio::piped())
-            .spawn()?
-            .wait_with_output()
-            .await?
-            .stdout;
-
-        // sha256's hex string is always 64 of length
-        digest.truncate(64);
-        digest.shrink_to_fit();
-
-        Ok(String::from_utf8(digest).expect("sha256sum's stdout is always ascii str"))
+    async fn digestize(path: &Path) -> io::Result<String> {
+        let data = tokio::fs::read(path).await?;
+        let mut hasher = Sha256::new();
+        hasher.update(&data);
+        Ok(format!("{:0x}", hasher.finalize()))
     }
 }
 
