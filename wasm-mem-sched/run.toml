@@ -1,9 +1,9 @@
-# [[module]]
-# kind = "wasm32-wasi"
-# path = "a.wasm"
-# count = 3
+[[module]]
+kind = "wasm32-wasi"
+path = "../wasm-test-app/target/wasm32-wasi/debug/d.wasm"
+count = 3
 
 [[module]]
 kind = "native"
-path = "target/debug/executor"
+path = "/usr/bin/ls"
 count = 1
