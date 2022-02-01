@@ -3,7 +3,6 @@ use clap::Parser;
 use futures::future::join_all;
 use sha2::{Digest, Sha256};
 use std::{
-    borrow::BorrowMut,
     collections::HashMap,
     io,
     path::{Path, PathBuf},
@@ -11,6 +10,7 @@ use std::{
     sync::Arc,
 };
 use tokio::{
+    fs,
     process::Command,
     signal::ctrl_c,
     sync::{mpsc, oneshot},
@@ -20,6 +20,13 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 mod config;
+
+macro_rules! regex {
+    ($re:literal $(,)?) => {{
+        static RE: once_cell::sync::OnceCell<regex::Regex> = once_cell::sync::OnceCell::new();
+        RE.get_or_init(|| regex::Regex::new($re).unwrap())
+    }};
+}
 
 #[derive(Debug, Clone)]
 pub struct Module {
@@ -71,7 +78,7 @@ pub struct Instance {
 }
 
 impl Instance {
-    #[tracing::instrument]
+    #[tracing::instrument(name = "Instance::spawn")]
     pub async fn spawn(
         spec: InstanceSpec,
         status_sender: mpsc::Sender<(Uuid, InstanceStatus)>,
@@ -128,11 +135,38 @@ impl Instance {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pid(pub u32);
 
+impl Pid {
+    pub async fn get_uss(&self) -> anyhow::Result<u64> {
+        let s = fs::read_to_string(format!("/proc/{}/smaps", self.0)).await?;
+        Ok(regex!(r"Private_((Clean)|(Dirty)):\s*(\d+)\skB")
+            .captures_iter(&s)
+            .map(|cap| cap.get(4).unwrap())
+            .map(|m| m.as_str().parse::<u64>().unwrap())
+            .sum())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum InstanceStatus {
     Starting,
     Running(Pid),
     Quit(ExitStatus),
+}
+
+#[derive(Debug)]
+pub struct MemoryCollector {
+    pub handler: Option<JoinHandle<anyhow::Result<()>>>,
+}
+
+impl MemoryCollector {
+    pub fn new() -> Self {
+        Self { handler: None }
+    }
+
+    pub async fn spawn(&mut self) -> anyhow::Result<()> {
+        self.handler = Some(tokio::spawn(async move { Ok(()) }));
+        Ok(())
+    }
 }
 
 #[derive(Debug, Parser)]
@@ -149,9 +183,13 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let conf = Config::from_path(Path::new(&cli.config)).await?;
 
-    let mgr_handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
+    let mut mem_collector = MemoryCollector::new();
+    mem_collector.spawn().await?;
+
+    let mgr_handler: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
         let mut instance_collector = HashMap::<Uuid, Instance>::new();
         let (status_sender, mut status_reciever) = mpsc::channel::<(Uuid, InstanceStatus)>(100);
+
         for c in conf.entries.iter() {
             let module = Arc::new(Module::new(c.kind, &c.path).await?);
             for _ in 0..c.count {
@@ -162,6 +200,7 @@ async fn main() -> anyhow::Result<()> {
                 instance_collector.insert(instance.spec.uid, instance);
             }
         }
+
         loop {
             tokio::select! {
                 status = status_reciever.recv() => {
@@ -170,14 +209,14 @@ async fn main() -> anyhow::Result<()> {
                     instance_collector.get_mut(&uid).unwrap().spec.status = status;
                 },
                 _ = ctrl_c() => {
-                    info!("Got ctrl_c. instances: {:?}", instance_collector);
-                    for (uid, instance) in instance_collector.borrow_mut() {
+                    info!("Got ctrl+c.");
+                    for (uid, instance) in instance_collector.iter_mut() {
                         let sender = instance.stop_cmd_sender.take();
                         if let Some(sender) = sender {
                             if let Err(e) = sender.send(()).map_err(|_| {
                                 anyhow::anyhow!("the stop message will never be received. (UID: {})", uid)
                             }){
-                                info!("{:?}", e);
+                                error!("{:?}", e);
                             };
                         }
                     }
@@ -199,7 +238,14 @@ async fn main() -> anyhow::Result<()> {
         Ok(())
     });
 
-    mgr_handle.await??;
+    mgr_handler.await??;
+    if let Some(handler) = mem_collector.handler {
+        handler.abort();
+        match handler.await {
+            Ok(_) => info!("A memory collector was shutdown."),
+            Err(e) => error!("{e}"),
+        }
+    }
 
     Ok(())
 }
