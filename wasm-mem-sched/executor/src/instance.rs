@@ -132,7 +132,7 @@ impl Pid {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstanceStatus {
     Starting,
     Running(Pid),
@@ -184,5 +184,34 @@ impl InstanceManager {
             }
         });
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[tokio::test]
+    async fn test_instance_cycle() {
+        let module = Arc::new(
+            Module::new(ModuleKind::Native, Path::new("/usr/bin/sleep"))
+                .await
+                .unwrap(),
+        );
+
+        let (status_sender, mut status_reciever) = mpsc::channel(100);
+
+        let spec = InstanceSpec::new(module, Uuid::new_v4());
+        let instance = Instance::spawn(spec.clone(), status_sender).await.unwrap();
+
+        let (uid, status) = status_reciever.recv().await.unwrap();
+        assert_eq!(uid, spec.uid);
+        assert!(matches!(status, InstanceStatus::Running(_)));
+
+        instance.shutdown().await.unwrap();
+        let (uid, status) = status_reciever.recv().await.unwrap();
+        assert_eq!(uid, spec.uid);
+        assert!(matches!(status, InstanceStatus::Quit(_)));
     }
 }
