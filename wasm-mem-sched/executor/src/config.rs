@@ -13,6 +13,7 @@ pub struct ConfigEntry {
     pub kind: ModuleKind,
     pub path: PathBuf,
     pub count: usize,
+    pub args: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
