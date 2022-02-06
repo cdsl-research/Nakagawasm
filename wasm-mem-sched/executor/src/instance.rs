@@ -70,7 +70,7 @@ impl Instance {
         status_sender
             .send((
                 spec.uid,
-                InstanceStatus::Running(child.id().map(|pid| Pid(pid)).ok_or_else(|| {
+                InstanceStatus::Running(child.id().map(Pid).ok_or_else(|| {
                     anyhow::anyhow!("The instance {} is already finished.", spec.uid)
                 })?),
             ))
