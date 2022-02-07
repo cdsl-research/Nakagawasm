@@ -1470,7 +1470,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasm-exec"
+name = "wasm-exec-sample"
 version = "0.0.0"
 dependencies = [
  "anyhow",
