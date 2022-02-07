@@ -25,6 +25,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .await?;
     let result: HashMap<String, String> = conn.hgetall("hkey").await?;
+    let _ = conn.del("hkey").await?;
 
     println!("{result:?}");
     Ok(())
