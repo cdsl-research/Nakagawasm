@@ -1,4 +1,2 @@
 [workspace]
-members = [
-    "executor"
-]
+members = ["executor"]
