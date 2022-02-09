@@ -1,13 +1,9 @@
-use crate::{config::ModuleKind, Module};
+use crate::{config::ModuleKind, register::InstanceRegister, Module};
 use futures::future::join_all;
-use std::{
-    collections::HashMap,
-    process::{ExitStatus, Stdio},
-    sync::Arc,
-};
+use std::{collections::HashMap, io, process::Stdio};
 use tokio::{
     fs,
-    process::Command,
+    process::{Child, Command},
     sync::{mpsc, oneshot},
     task::JoinHandle,
 };
@@ -21,19 +17,41 @@ macro_rules! regex {
     }};
 }
 
+/// Instanceを実行するためのマニュフェスト的なもの
 #[derive(Debug, Clone)]
 pub struct InstanceSpec {
-    module: Arc<Module>,
-    status: InstanceStatus,
-    uid: Uuid,
+    pub uid: Uuid,
+    pub module: Module,
+    pub args: Vec<String>,
 }
 
 impl InstanceSpec {
-    pub fn new(module: Arc<Module>, uid: Uuid) -> Self {
+    pub fn new(module: Module, args: Vec<String>) -> Self {
         Self {
             module,
-            status: InstanceStatus::Starting,
-            uid,
+            uid: Uuid::new_v4(),
+            args,
+        }
+    }
+
+    /// selfにしたがって，サブプロセスの実行を開始する
+    pub fn spawn(&self) -> io::Result<Child> {
+        let path = self.module.path.as_path();
+
+        match self.module.kind {
+            ModuleKind::Wasm32Wasi => Command::new("wasmtime")
+                .kill_on_drop(true)
+                .arg(path)
+                .args(&self.args)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn(),
+            ModuleKind::Native => Command::new(path)
+                .args(&self.args)
+                .kill_on_drop(true)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn(),
         }
     }
 }
@@ -52,28 +70,13 @@ impl Instance {
         spec: InstanceSpec,
         status_sender: mpsc::Sender<(Uuid, InstanceStatus)>,
     ) -> anyhow::Result<Self> {
-        let path = spec.module.path.as_path();
-        let mut child = match spec.module.kind {
-            ModuleKind::Wasm32Wasi => Command::new("wasmtime")
-                .kill_on_drop(true)
-                .arg(path)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()?,
-            ModuleKind::Native => Command::new(path)
-                .kill_on_drop(true)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()?,
-        };
+        // ここでredisに登録
 
+        let mut child = spec.spawn()?;
+
+        // ここでredisのstatusをアップデート
         status_sender
-            .send((
-                spec.uid,
-                InstanceStatus::Running(child.id().map(Pid).ok_or_else(|| {
-                    anyhow::anyhow!("The instance {} is already finished.", spec.uid)
-                })?),
-            ))
+            .send((spec.uid, InstanceStatus::Running))
             .await?;
 
         let (tx, stop_op_reciever) = oneshot::channel();
@@ -81,13 +84,15 @@ impl Instance {
         let handler = tokio::spawn(async move {
             tokio::select! {
                 status = child.wait() => {
-                    status_sender.send((spec.uid, InstanceStatus::Quit(status?))).await?;
+                    status?;
+                    status_sender.send((spec.uid, InstanceStatus::Quit)).await?;
                     Ok(())
                 },
                 _ = stop_op_reciever => {
                     info!("got stop message ({})", spec.uid);
                     child.kill().await?;
-                    status_sender.send((spec.uid, InstanceStatus::Quit(child.wait().await?))).await?;
+                    child.wait().await?;
+                    status_sender.send((spec.uid, InstanceStatus::Quit)).await?;
                     Ok(())
                 }
             }
@@ -132,37 +137,77 @@ impl Pid {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    strum::EnumString,
+    strum::Display,
+    strum::EnumIter,
+    strum::IntoStaticStr,
+)]
 pub enum InstanceStatus {
+    #[strum(serialize = "starting")]
     Starting,
-    Running(Pid),
-    Quit(ExitStatus),
+    #[strum(serialize = "running")]
+    Running,
+    #[strum(serialize = "quit")]
+    Quit,
 }
 
+#[derive(Debug)]
 pub struct InstanceManager {
     instances: HashMap<Uuid, Instance>,
-    status_reciever: mpsc::Receiver<(Uuid, InstanceStatus)>,
+    register: Box<dyn InstanceRegister>,
+    cmd_reciever: mpsc::Receiver<InstanceOps>,
+}
+
+pub enum InstanceOps {
+    Start(InstanceSpec),
+    Stop(Uuid),
 }
 
 impl InstanceManager {
-    pub fn new(status_reciever: mpsc::Receiver<(Uuid, InstanceStatus)>) -> Self {
+    pub fn new(
+        register: Box<dyn InstanceRegister>,
+        cmd_reciever: mpsc::Receiver<InstanceOps>,
+    ) -> Self {
         Self {
+            cmd_reciever,
             instances: HashMap::new(),
-            status_reciever,
+            register,
         }
     }
 
     pub fn spawn(mut self) -> JoinHandle<anyhow::Result<()>> {
+        let (status_sender, mut status_reciever) = mpsc::channel::<(Uuid, InstanceStatus)>(100);
+
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    status = self.status_reciever.recv() => {
+                    cmd = self.cmd_reciever.recv() => {
+                        let cmd = cmd.unwrap();
+                        match cmd {
+                            InstanceOps::Start(spec) => {
+                                self.start_instance(spec, status_sender.clone()).await?;
+                            }
+                            InstanceOps::Stop(uid) => {
+                                self.stop_instance(uid).await?;
+                            }
+                        }
+                    },
+                    status = status_reciever.recv() => {
                         let (uid, status) = status.unwrap();
                         info!("status({:?}) update recieved {:?}", status,uid);
-                        self.instances.get_mut(&uid).unwrap().spec.status = status;
+                        if status == InstanceStatus::Quit {
+                            self.register.expire(&uid).await?;
+                        }
+                        self.register.update(&uid, status).await?;
                     },
                     _ = tokio::signal::ctrl_c() => {
-                        self.shutdown().await?;
+                        self.shutdown_all().await?;
                         break;
                     }
                 }
@@ -172,7 +217,28 @@ impl InstanceManager {
         })
     }
 
-    async fn shutdown(mut self) -> anyhow::Result<()> {
+    async fn start_instance(
+        &mut self,
+        spec: InstanceSpec,
+        status_sender: mpsc::Sender<(Uuid, InstanceStatus)>,
+    ) -> anyhow::Result<()> {
+        self.register.register(&spec).await?;
+        let uid = spec.uid;
+        let instance = Instance::spawn(spec, status_sender).await?;
+        let _ = self.instances.insert(uid, instance);
+        Ok(())
+    }
+
+    async fn stop_instance(&mut self, uid: Uuid) -> anyhow::Result<()> {
+        if let Some(instance) = self.instances.remove(&uid) {
+            instance.shutdown().await?;
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(name = "mgr::shutdown_all")]
+    async fn shutdown_all(mut self) -> anyhow::Result<()> {
         let shutdown_tasks_iter = self
             .instances
             .drain()
@@ -194,24 +260,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_instance_cycle() {
-        let module = Arc::new(
-            Module::new(ModuleKind::Native, Path::new("/usr/bin/sleep"))
-                .await
-                .unwrap(),
-        );
-
+        let module = Module::new(ModuleKind::Native, Path::new("/usr/bin/sleep"))
+            .await
+            .unwrap();
+        let spec = InstanceSpec::new(module, vec!["infinity".into()]);
         let (status_sender, mut status_reciever) = mpsc::channel(100);
 
-        let spec = InstanceSpec::new(module, Uuid::new_v4());
         let instance = Instance::spawn(spec.clone(), status_sender).await.unwrap();
 
         let (uid, status) = status_reciever.recv().await.unwrap();
         assert_eq!(uid, spec.uid);
-        assert!(matches!(status, InstanceStatus::Running(_)));
+        assert!(matches!(status, InstanceStatus::Running));
 
         instance.shutdown().await.unwrap();
         let (uid, status) = status_reciever.recv().await.unwrap();
         assert_eq!(uid, spec.uid);
-        assert!(matches!(status, InstanceStatus::Quit(_)));
+        assert!(matches!(status, InstanceStatus::Quit));
     }
 }

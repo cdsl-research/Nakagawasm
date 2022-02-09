@@ -1,6 +1,7 @@
 use crate::config::{Config, ModuleKind};
 use clap::Parser;
 use instance::{InstanceManager, InstanceStatus};
+use register::RedisRegister;
 use sha2::{Digest, Sha256};
 use std::{
     io,
@@ -11,6 +12,7 @@ use uuid::Uuid;
 
 mod config;
 mod instance;
+mod register;
 
 #[derive(Debug, Clone)]
 pub struct Module {
@@ -68,8 +70,12 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let conf = Config::from_path(Path::new(&cli.config)).await?;
 
-    let (status_sender, status_reciever) = mpsc::channel::<(Uuid, InstanceStatus)>(100);
-    let instance_manager = InstanceManager::new(status_reciever);
+    let (cmd_sender, cmd_reciever) = mpsc::channel(100);
+
+    let instance_manager = InstanceManager::new(
+        Box::new(RedisRegister::new("redis://0.0.0.0:6379")?),
+        cmd_reciever,
+    );
     let mgr_handler = instance_manager.spawn();
 
     mgr_handler.await??;
