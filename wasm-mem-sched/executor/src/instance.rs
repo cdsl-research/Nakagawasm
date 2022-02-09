@@ -1,6 +1,6 @@
-use crate::{config::ModuleKind, Module};
+use crate::{config::ModuleKind, register::InstanceRegister, Module};
 use futures::future::join_all;
-use std::{collections::HashMap, io, process::Stdio, sync::Arc};
+use std::{collections::HashMap, io, process::Stdio};
 use tokio::{
     fs,
     process::{Child, Command},
@@ -137,41 +137,77 @@ impl Pid {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    strum::EnumString,
+    strum::Display,
+    strum::EnumIter,
+    strum::IntoStaticStr,
+)]
 pub enum InstanceStatus {
+    #[strum(serialize = "starting")]
+    Starting,
+    #[strum(serialize = "running")]
     Running,
+    #[strum(serialize = "quit")]
     Quit,
 }
 
-#[derive(Debug, Clone)]
-pub struct InstanceStatusRegister {
-    pool: r2d2::Pool<redis::Client>,
-}
-
+#[derive(Debug)]
 pub struct InstanceManager {
     instances: HashMap<Uuid, Instance>,
-    status_reciever: mpsc::Receiver<(Uuid, InstanceStatus)>,
+    register: Box<dyn InstanceRegister>,
+    cmd_reciever: mpsc::Receiver<InstanceOps>,
+}
+
+pub enum InstanceOps {
+    Start(InstanceSpec),
+    Stop(Uuid),
 }
 
 impl InstanceManager {
-    pub fn new(status_reciever: mpsc::Receiver<(Uuid, InstanceStatus)>) -> Self {
+    pub fn new(
+        register: Box<dyn InstanceRegister>,
+        cmd_reciever: mpsc::Receiver<InstanceOps>,
+    ) -> Self {
         Self {
+            cmd_reciever,
             instances: HashMap::new(),
-            status_reciever,
+            register,
         }
     }
 
     pub fn spawn(mut self) -> JoinHandle<anyhow::Result<()>> {
+        let (status_sender, mut status_reciever) = mpsc::channel::<(Uuid, InstanceStatus)>(100);
+
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    status = self.status_reciever.recv() => {
+                    cmd = self.cmd_reciever.recv() => {
+                        let cmd = cmd.unwrap();
+                        match cmd {
+                            InstanceOps::Start(spec) => {
+                                self.start_instance(spec, status_sender.clone()).await?;
+                            }
+                            InstanceOps::Stop(uid) => {
+                                self.stop_instance(uid).await?;
+                            }
+                        }
+                    },
+                    status = status_reciever.recv() => {
                         let (uid, status) = status.unwrap();
                         info!("status({:?}) update recieved {:?}", status,uid);
-                        // TODO: ここでRedis上のステータスを更新
+                        if status == InstanceStatus::Quit {
+                            self.register.expire(&uid).await?;
+                        }
+                        self.register.update(&uid, status).await?;
                     },
                     _ = tokio::signal::ctrl_c() => {
-                        self.shutdown().await?;
+                        self.shutdown_all().await?;
                         break;
                     }
                 }
@@ -181,7 +217,28 @@ impl InstanceManager {
         })
     }
 
-    async fn shutdown(mut self) -> anyhow::Result<()> {
+    async fn start_instance(
+        &mut self,
+        spec: InstanceSpec,
+        status_sender: mpsc::Sender<(Uuid, InstanceStatus)>,
+    ) -> anyhow::Result<()> {
+        self.register.register(&spec).await?;
+        let uid = spec.uid;
+        let instance = Instance::spawn(spec, status_sender).await?;
+        let _ = self.instances.insert(uid, instance);
+        Ok(())
+    }
+
+    async fn stop_instance(&mut self, uid: Uuid) -> anyhow::Result<()> {
+        if let Some(instance) = self.instances.remove(&uid) {
+            instance.shutdown().await?;
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(name = "mgr::shutdown_all")]
+    async fn shutdown_all(mut self) -> anyhow::Result<()> {
         let shutdown_tasks_iter = self
             .instances
             .drain()

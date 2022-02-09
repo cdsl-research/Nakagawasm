@@ -1,5 +1,5 @@
 use chrono::Local;
-use redis::{AsyncCommands, Client, Commands};
+use redis::{aio::Connection, AsyncCommands, Client, Commands};
 use std::collections::HashMap;
 use tokio::task::JoinHandle;
 
@@ -8,16 +8,32 @@ async fn main() -> anyhow::Result<()> {
     let client = redis::Client::open("redis://0.0.0.0:6379")?;
     let mut conn = client.get_async_connection().await?;
 
-    let _ = conn.set("my_key", "my_value").await?;
-    let result: String = conn.get("my_key").await?;
-    let _ = conn.del("my_key").await?;
+    get_set_example(&mut conn).await?;
 
-    println!("{result:?}");
+    exsits_example(&mut conn).await?;
 
     async_without_connection_pool_example().await?;
 
     sync_with_connection_pool_example().await?;
 
+    Ok(())
+}
+
+async fn get_set_example(conn: &mut Connection) -> anyhow::Result<()> {
+    let _ = conn.set("my_key", "my_value").await?;
+    let result: String = conn.get("my_key").await?;
+    assert_eq!(result.as_str(), "my_value");
+    let _ = conn.del("my_key").await?;
+    Ok(())
+}
+
+async fn exsits_example(conn: &mut Connection) -> anyhow::Result<()> {
+    let _ = conn.set("key", "value").await?;
+    let exists: bool = conn.exists("key").await?;
+    assert!(exists);
+    let exists: bool = conn.exists("no-key").await?;
+    assert!(!exists);
+    let _ = conn.del("key").await?;
     Ok(())
 }
 
