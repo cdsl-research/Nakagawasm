@@ -1,6 +1,6 @@
 use crate::config::{Config, ModuleKind};
 use clap::Parser;
-use instance::{InstanceManager, InstanceStatus};
+use instance::{InstanceManager, InstanceOps, InstanceSpec, InstanceStatus};
 use register::RedisRegister;
 use sha2::{Digest, Sha256};
 use std::{
@@ -77,6 +77,18 @@ async fn main() -> anyhow::Result<()> {
         cmd_reciever,
     );
     let mgr_handler = instance_manager.spawn();
+
+    for e in conf.entries {
+        for _ in 0..e.count {
+            let args = e.args.clone().unwrap_or_default();
+            cmd_sender
+                .send(InstanceOps::Start(InstanceSpec::new(
+                    Module::new(e.kind, e.path.as_path()).await?,
+                    args.clone(),
+                )))
+                .await?;
+        }
+    }
 
     mgr_handler.await??;
     Ok(())

@@ -164,6 +164,7 @@ pub struct InstanceManager {
     cmd_reciever: mpsc::Receiver<InstanceOps>,
 }
 
+#[derive(Debug, Clone)]
 pub enum InstanceOps {
     Start(InstanceSpec),
     Stop(Uuid),
@@ -238,17 +239,10 @@ impl InstanceManager {
     }
 
     #[tracing::instrument(name = "mgr::shutdown_all")]
-    async fn shutdown_all(mut self) -> anyhow::Result<()> {
-        let shutdown_tasks_iter = self
-            .instances
-            .drain()
-            .map(|(_uid, instance)| instance.shutdown());
-
-        join_all(shutdown_tasks_iter).await.iter().for_each(|r| {
-            if let Err(e) = r {
-                error!("{}", e);
-            }
-        });
+    async fn shutdown_all(&mut self) -> anyhow::Result<()> {
+        let uids = self.instances.keys().cloned().collect::<Vec<_>>();
+        uids.into_iter().map(|uid| self.stop_instance(uid));
+        // join_all()
         Ok(())
     }
 }
