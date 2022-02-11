@@ -1,0 +1,8 @@
+# threshold = 0
+outdir = "log/"
+
+[executor]
+path = "target/release/executor"
+
+[wasi]
+path = "./test.wasm"
