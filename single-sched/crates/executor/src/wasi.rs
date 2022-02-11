@@ -22,6 +22,7 @@ impl StopHandler {
     }
 
     pub async fn stop(self) -> anyhow::Result<()> {
+        tracing::info!("stop-handler::stop");
         self.ir.interrupt();
         self.handle.abort();
         self.handle.await?;
@@ -38,6 +39,7 @@ impl WasiRuntime {
     }
 
     pub async fn start(&mut self) -> anyhow::Result<()> {
+        tracing::info!("wasi-runtime::start");
         if self.stop_handler.is_none() {
             return Ok(());
         }
@@ -80,6 +82,7 @@ impl WasiRuntime {
     }
 
     pub async fn stop(&mut self) -> anyhow::Result<()> {
+        tracing::info!("wasi-runtime::stop");
         if let Some(stop_handler) = self.stop_handler.take() {
             stop_handler.stop().await?;
         }

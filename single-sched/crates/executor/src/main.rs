@@ -1,9 +1,9 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::{Arc}};
 use cmd::{
     cmd_server::{Cmd as CmdExt, CmdServer},
     RestartResponse,
 };
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 use tonic::{transport::Server, Request, Response, Status};
 use tracing::info;
 
@@ -14,7 +14,7 @@ mod wasi;
 
 #[derive(Debug)]
 pub struct Cmd {
-    runtime: RwLock<wasi::WasiRuntime>,
+    runtime: Arc<Mutex<wasi::WasiRuntime>>,
 }
 
 #[tonic::async_trait]
@@ -23,8 +23,11 @@ impl CmdExt for Cmd {
     async fn restart(&self, _request: Request<()>) -> Result<Response<RestartResponse>, Status> {
         info!("Recieved restart request.");
         let restarted = chrono::Local::now().to_rfc3339();
-        self.runtime.write().await.stop().await.unwrap();
-        self.runtime.write().await.start().await.unwrap();
+        let mut r = self.runtime.lock().await;
+        r.stop().await.unwrap();
+        r.start().await.unwrap();
+        // self.runtime.get_mut().stop().await.unwrap();
+        // self.runtime.get_mut().start().await.unwrap();
         Ok(Response::new(RestartResponse { restarted }))
     }
 }
@@ -32,7 +35,7 @@ impl CmdExt for Cmd {
 impl Cmd {
     pub fn new(runtime: wasi::WasiRuntime) -> Self {
         Self {
-            runtime: RwLock::new(runtime),
+            runtime: Arc::new(Mutex::new(runtime)),
         }
     }
 }
@@ -51,10 +54,21 @@ async fn main() -> anyhow::Result<()> {
     let cmd = Cmd::new(runtime);
 
     let addr = "[::1]:50051".parse()?;
-    Server::builder()
-        .add_service(CmdServer::new(cmd))
-        .serve(addr)
-        .await?;
+
+    tracing::info!("start service");
+
+    let server =     Server::builder()
+    .add_service(CmdServer::new(cmd))
+    .serve(addr);
+
+    tokio::select!{
+        server = server => {
+            tracing::info!("stopped service, {:?}", server?);
+        },
+        _ = tokio::signal::ctrl_c() => {
+            info!("got ctrl_c");
+        }
+    }
 
     Ok(())
 }

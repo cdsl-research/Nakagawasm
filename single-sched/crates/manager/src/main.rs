@@ -10,7 +10,7 @@ use tokio::{
     process::{Child, Command},
     sync::mpsc,
     task::JoinHandle,
-    time::{sleep_until, Instant},
+    time::{sleep, sleep_until, Instant},
 };
 pub mod cmd {
     tonic::include_proto!("cmd");
@@ -27,8 +27,8 @@ macro_rules! regex {
 fn spawn_executor(config: &config::Config) -> io::Result<Child> {
     Command::new(&config.executor.path)
         .arg(&config.wasi.path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        // .stdout(Stdio::piped())
+        // .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
 }
@@ -62,6 +62,8 @@ async fn spawn_logger(child: &mut Child, write_dir: &Path) -> JoinHandle<anyhow:
         let span = tracing::info_span!("log_writer");
         let _enter = span.enter();
 
+        tracing::info!("spawn log writer");
+
         write_dir.push("log.log");
         let mut file = tokio::fs::File::create(write_dir.as_path()).await?;
 
@@ -70,14 +72,14 @@ async fn spawn_logger(child: &mut Child, write_dir: &Path) -> JoinHandle<anyhow:
         loop {
             tokio::select! {
                res = stdout.read_to_string(&mut buf1) => {
-                   res?;
-                   file.write_all(buf1.as_bytes()).await?;
-                   buf1.clear();
-               },
-               res = stderr.read_to_string(&mut buf2) => {
-                   res?;
-                   file.write_all(buf2.as_bytes()).await?;
-                   buf2.clear();
+                    tracing::info!("{:?}", res);
+                    file.write_all(buf1.as_bytes()).await?;
+                    buf1.clear();
+                },
+                res = stderr.read_to_string(&mut buf2) => {
+                    tracing::info!("{:?}", res);
+                    file.write_all(buf2.as_bytes()).await?;
+                    buf2.clear();
                },
             }
         }
@@ -88,6 +90,7 @@ async fn spawn_logger(child: &mut Child, write_dir: &Path) -> JoinHandle<anyhow:
 
 async fn spawn_uss_sender(pid: Pid, sender: mpsc::Sender<u64>) -> JoinHandle<anyhow::Result<()>> {
     tokio::spawn(async move {
+        tracing::info!("spawn uss sender");
         loop {
             let instant = Instant::now();
             let tick = sleep_until(instant + Duration::from_secs(10));
@@ -103,7 +106,8 @@ async fn spawn_sched(
     th: Option<u64>,
     write_dir: &Path,
 ) -> anyhow::Result<JoinHandle<anyhow::Result<()>>> {
-    let mut client = CmdClient::connect("http://[::1]:50051").await?;
+    tracing::info!("called spwn_sched");
+
     let pid = Pid(child.id().expect("child is exited"));
     let (tx, mut rx) = mpsc::channel(100);
 
@@ -113,16 +117,30 @@ async fn spawn_sched(
 
     let _handle: JoinHandle<Result<(), anyhow::Error>> = spawn_uss_sender(pid, tx).await;
 
+    let mut client = loop {
+        match CmdClient::connect("http://[::1]:50051").await {
+            Ok(c) => break c,
+            Err(e) => {
+                tracing::info!("{:?}", e);
+                tracing::info!("3 secs sleep");
+                sleep(Duration::from_secs(3)).await;
+            }
+        }
+    };
+
     let task: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
+        tracing::info!("spawn sched");
+
         loop {
             tokio::select! {
                 recv = rx.recv() => {
                     let uss = recv.unwrap();
                     let now = chrono::Local::now().to_rfc3339();
-                    file.write_all(format!("{},{}", now, uss).as_bytes()).await?;
+                    file.write_all(format!("{},{}\n", now, uss).as_bytes()).await?;
                     if let Some(th) = th {
                         if uss > th {
-                            let _ = client.restart(()).await?;
+                            let restarted = client.restart(()).await?;
+                            tracing::debug!("restarted: {:?}", restarted);
                         }
                     }
                 },
@@ -144,20 +162,24 @@ async fn main() -> anyhow::Result<()> {
     let s = tokio::fs::read_to_string("config.toml").await?;
     let config: config::Config = toml::from_str(&s)?;
 
+    tracing::info!("{:?}", config);
+
     let mut child = spawn_executor(&config)?;
 
     let write_dir = make_result_dir(&config.outdir).await?;
 
-    let log_writer = spawn_logger(&mut child, write_dir.as_path()).await;
+    // let log_writer = spawn_logger(&mut child, write_dir.as_path()).await;
     let sched = spawn_sched(child, config.threshold, write_dir.as_path()).await?;
 
     tokio::signal::ctrl_c().await?;
 
-    log_writer.abort();
+    tracing::info!("got ctrl_c");
+
+    // log_writer.abort();
     sched.abort();
 
     let _ = sched.await;
-    let _ = log_writer.await;
+    // let _ = log_writer.await;
 
     Ok(())
 }

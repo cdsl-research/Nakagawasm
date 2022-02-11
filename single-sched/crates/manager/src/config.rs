@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Config {
     pub executor: Executor,
     pub wasi: Wasi,
@@ -8,12 +8,12 @@ pub struct Config {
     pub outdir: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Executor {
     pub path: String
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Wasi {
     pub path: String
 }
