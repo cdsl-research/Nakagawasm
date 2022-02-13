@@ -24,6 +24,7 @@ impl CmdExt for Cmd {
         info!("Recieved restart request.");
         let restarted = chrono::Local::now().to_rfc3339();
         let mut r = self.runtime.lock().await;
+        info!("get mutex lock");
         r.stop().await.unwrap();
         r.start().await.unwrap();
         // self.runtime.get_mut().stop().await.unwrap();
@@ -49,8 +50,8 @@ async fn main() -> anyhow::Result<()> {
         panic!("Argument is missing")
     }
 
-    let runtime = wasi::WasiRuntime::new(PathBuf::from(&args[1]));
-
+    let mut runtime = wasi::WasiRuntime::new(PathBuf::from(&args[1]));
+    runtime.start().await?;
     let cmd = Cmd::new(runtime);
 
     let addr = "[::1]:50051".parse()?;

@@ -2,7 +2,7 @@ use cmd::cmd_client::CmdClient;
 use std::{
     io,
     path::{Path, PathBuf},
-    process::Stdio,
+    // process::Stdio,
     time::Duration,
 };
 use tokio::{
@@ -53,7 +53,7 @@ async fn make_result_dir(outdir: impl AsRef<Path>) -> anyhow::Result<PathBuf> {
     Ok(path)
 }
 
-async fn spawn_logger(child: &mut Child, write_dir: &Path) -> JoinHandle<anyhow::Result<()>> {
+async fn _spawn_logger(child: &mut Child, write_dir: &Path) -> JoinHandle<anyhow::Result<()>> {
     let mut stdout = child.stdout.take().unwrap();
     let mut stderr = child.stderr.take().unwrap();
     let mut write_dir = PathBuf::from(write_dir);
@@ -164,7 +164,7 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("{:?}", config);
 
-    let mut child = spawn_executor(&config)?;
+    let child = spawn_executor(&config)?;
 
     let write_dir = make_result_dir(&config.outdir).await?;
 
