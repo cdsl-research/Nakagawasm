@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package cmd;
+
+import "google/protobuf/empty.proto";
+
+service Cmd {
+    rpc restart (google.protobuf.Empty) returns (RestartResponse);
+}
+
+message RestartResponse {
+    string restarted = 1;
+}
