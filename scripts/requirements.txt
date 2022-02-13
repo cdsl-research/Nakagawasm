@@ -1,3 +1,5 @@
 pandas
 japanize_matplotlib
 matplotlib
+scipy
+numpy
