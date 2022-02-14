@@ -1,8 +1,5 @@
 use futures::future::join_all;
-use std::{
-    process::{Output, Stdio},
-    time::Duration,
-};
+use std::time::Duration;
 use tokio::{process::Command, time::sleep};
 use tracing::{error, info};
 
@@ -15,7 +12,7 @@ async fn main() {
 
     info!("started {} tasks on {} secs", N, EXEC_SECS);
 
-    let tasks = (0..N).map(|_| task());
+    let tasks = (0..N).map(|n| task(n));
     join_all(tasks).await.iter().for_each(|x| {
         if let Err(e) = x {
             error!("{:?}", e);
@@ -24,28 +21,15 @@ async fn main() {
 }
 
 #[tracing::instrument]
-async fn task() -> Result<(), Box<dyn std::error::Error>> {
-    let mut child = Command::new("manager")
-        .kill_on_drop(true)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("process spawn failed");
+async fn task(n: usize) -> anyhow::Result<()> {
+    info!("started task{}", n);
+
+    let mut child = Command::new("./manager-v2").kill_on_drop(true).spawn()?;
 
     sleep(Duration::from_secs(EXEC_SECS)).await;
 
-    let _ = child.kill().await;
-    let Output {
-        status,
-        stdout,
-        stderr,
-    } = child.wait_with_output().await?;
-    info!(
-        "status: {} stdout: {}, stderr: {}",
-        status,
-        String::from_utf8(stdout)?,
-        String::from_utf8(stderr)?
-    );
+    child.start_kill()?;
+    child.wait().await?;
 
     Ok(())
 }

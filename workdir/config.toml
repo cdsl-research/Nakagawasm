@@ -1,0 +1,6 @@
+threshold = 6859
+outdir = "log/"
+
+[wasi]
+path = "./e.wasm"
+mapdir = [{ host = "dds", guest = "." }]

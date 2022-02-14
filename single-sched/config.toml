@@ -1,9 +1,9 @@
 # threshold = 6000
 outdir = "log/"
 
-[executor]
-path = "target/release/executor"
+# [executor]
+# path = "target/release/executor"
 
 [wasi]
 path = "./test.wasm"
-mapdir = [{host = "dds", guest = "."}]
+mapdir = [{ host = "dds", guest = "." }]
