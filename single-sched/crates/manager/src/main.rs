@@ -2,7 +2,7 @@ use cmd::cmd_client::CmdClient;
 use std::{
     io,
     path::{Path, PathBuf},
-    // process::Stdio,
+    process::Stdio,
     time::Duration,
 };
 use tokio::{
@@ -24,11 +24,11 @@ macro_rules! regex {
     }};
 }
 
-fn spawn_executor(config: &config::Config) -> io::Result<Child> {
+fn spawn_child(config: &config::Config) -> io::Result<Child> {
     Command::new(&config.executor.path)
         .arg(&config.wasi.path)
-        // .stdout(Stdio::piped())
-        // .stderr(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
 }
@@ -53,7 +53,7 @@ async fn make_result_dir(outdir: impl AsRef<Path>) -> anyhow::Result<PathBuf> {
     Ok(path)
 }
 
-async fn _spawn_logger(child: &mut Child, write_dir: &Path) -> JoinHandle<anyhow::Result<()>> {
+async fn spawn_logger(child: &mut Child, write_dir: &Path) -> JoinHandle<anyhow::Result<()>> {
     let mut stdout = child.stdout.take().unwrap();
     let mut stderr = child.stderr.take().unwrap();
     let mut write_dir = PathBuf::from(write_dir);
@@ -117,16 +117,16 @@ async fn spawn_sched(
 
     let _handle: JoinHandle<Result<(), anyhow::Error>> = spawn_uss_sender(pid, tx).await;
 
-    let mut client = loop {
-        match CmdClient::connect("http://[::1]:50051").await {
-            Ok(c) => break c,
-            Err(e) => {
-                tracing::info!("{:?}", e);
-                tracing::info!("3 secs sleep");
-                sleep(Duration::from_secs(3)).await;
-            }
-        }
-    };
+    // let mut client = loop {
+    //     match CmdClient::connect("http://[::1]:50051").await {
+    //         Ok(c) => break c,
+    //         Err(e) => {
+    //             tracing::info!("{:?}", e);
+    //             tracing::info!("3 secs sleep");
+    //             sleep(Duration::from_secs(3)).await;
+    //         }
+    //     }
+    // };
 
     let task: JoinHandle<anyhow::Result<()>> = tokio::spawn(async move {
         tracing::info!("spawn sched");
@@ -138,10 +138,10 @@ async fn spawn_sched(
                     let now = chrono::Local::now().to_rfc3339();
                     file.write_all(format!("{},{}\n", now, uss).as_bytes()).await?;
                     if let Some(th) = th {
-                        if uss > th {
-                            let restarted = client.restart(()).await?;
-                            tracing::debug!("restarted: {:?}", restarted);
-                        }
+                        // if uss > th {
+                        //     let restarted = client.restart(()).await?;
+                        //     tracing::debug!("restarted: {:?}", restarted);
+                        // }
                     }
                 },
                 _ = child.wait() => {
@@ -164,22 +164,22 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("{:?}", config);
 
-    let child = spawn_executor(&config)?;
+    let mut child = spawn_child(&config)?;
 
     let write_dir = make_result_dir(&config.outdir).await?;
 
-    // let log_writer = spawn_logger(&mut child, write_dir.as_path()).await;
+    let log_writer = spawn_logger(&mut child, write_dir.as_path()).await;
     let sched = spawn_sched(child, config.threshold, write_dir.as_path()).await?;
 
     tokio::signal::ctrl_c().await?;
 
     tracing::info!("got ctrl_c");
 
-    // log_writer.abort();
     sched.abort();
+    log_writer.abort();
 
     let _ = sched.await;
-    // let _ = log_writer.await;
+    let _ = log_writer.await;
 
     Ok(())
 }

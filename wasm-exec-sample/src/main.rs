@@ -35,12 +35,6 @@ async fn main() -> anyhow::Result<()> {
         .spawn()
         .expect("failed to spawn");
 
-    // let mut child = Command::new("../wasm-test-app/target/debug/d")
-    //     .stdout(Stdio::piped())
-    //     .stderr(Stdio::piped())
-    //     .spawn()
-    //     .expect("failed to spawn child process");
-
     info!("child process spawned!");
 
     let mut file = File::create("dwasm.txt").await?;

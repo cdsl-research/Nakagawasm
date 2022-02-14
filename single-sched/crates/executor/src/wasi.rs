@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use tokio::task::JoinHandle;
 use wasi_experimental_http_wasmtime::HttpCtx;
 use wasmtime::*;
-use wasmtime_wasi::sync::WasiCtxBuilder;
+use wasmtime_wasi::{sync::WasiCtxBuilder, Dir, ambient_authority};
 
 #[derive(Debug)]
 pub struct WasiRuntime {
@@ -53,6 +53,8 @@ impl WasiRuntime {
         let wasi = WasiCtxBuilder::new()
             .inherit_stdio()
             .inherit_args()?
+            // TODO
+            .preopened_dir(Dir::open_ambient_dir("dds", ambient_authority())?, ".")?
             .build();
         let mut store = Store::new(&engine, wasi);
 
