@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+from typing import cast
+
+import japanize_matplotlib
 import numpy as np
 import pandas as pd
 from scipy import stats
-from pathlib import Path
 from matplotlib import pyplot as plt
-import japanize_matplotlib
+from numpy.typing import NDArray
 
 japanize_matplotlib.japanize()
 
@@ -39,18 +42,27 @@ def mean_by_one_instance(path: Path) -> float:
                      names=["datetime", "uss"],
                      parse_dates=[0])
     # print(df.dtypes, df)
-    return df["uss"].median()
+    return float(df["uss"].median())
 
 
 def plot_hist(samples: list[float]) -> None:
-    plt.hist(samples, bins=16)
-    plt.grid()
-    plt.xlim(5000, 9000)
-    plt.tick_params("both", labelsize=12)
-    plt.xlabel("メモリ使用量の中央値の分布 (kBytes)", fontsize=14)
-    plt.ylabel("個数", fontsize=14)
-    plt.savefig(f"{TH}-median.png", bbox_inches='tight', pad_inches=0)
-    plt.savefig(f"{TH}-median.pdf", bbox_inches='tight', pad_inches=0)
+    hist, bin_edges = cast(tuple[NDArray[np.int64], NDArray[np.float64]],
+                           np.histogram(samples, bins=16))
+    print(hist, hist.dtype)
+    print(bin_edges, bin_edges.dtype)
+    bin_edges = (bin_edges[:-1] + bin_edges[1:]) // 2
+    fig, ax = plt.subplots()
+    ax.grid(True)
+    ax.set_xticks(np.arange(0, 8500, 1000))
+    ax.set_yticks(np.arange(0, 11, 1))
+    ax.set_xlim(0, 8500)
+    ax.set_ylim(0, 11)
+    ax.tick_params("both", labelsize=12)
+    ax.set_xlabel("メモリ使用量 [KiB]", fontsize=14)
+    ax.set_ylabel("個数", fontsize=14)
+    ax.plot(bin_edges, hist, ".-")
+    fig.savefig(f"{TH}-median.png", bbox_inches='tight', pad_inches=0)
+    fig.savefig(f"{TH}-median.pdf", bbox_inches='tight', pad_inches=0)
 
 
 def main() -> None:
@@ -58,7 +70,10 @@ def main() -> None:
     files: map[Path] = map(lambda p: p / "mem.csv", parent_dir.glob("*"))
     samples = list(map(mean_by_one_instance, files))
     plot_hist(samples)
-    answer = solve(samples)
+
+    arr = np.array(samples)
+    print(arr.mean(), cast(np.float64, np.median(arr)))
+    answer = solve(list(map(int, samples)))
     print(answer)
 
 

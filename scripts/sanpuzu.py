@@ -6,7 +6,7 @@ import japanize_matplotlib
 import pandas as pd
 from matplotlib import pyplot as plt
 
-# TH = "6859"
+TH = "6859"
 TH = "none"
 
 
@@ -27,13 +27,13 @@ def main() -> None:
         plt.plot(range(0, 590, 10), df["uss"].values)
 
     plt.grid()
-    plt.xlim(0, 600)
+    plt.xlim(0, 590)
     plt.ylim(0, 8_500)
     plt.tick_params("both", labelsize=12)
-    plt.xlabel("経過時間 (sec)", fontsize=14)
-    plt.ylabel("メモリ使用量 (kBytes)", fontsize=14)
-    plt.savefig(f"{TH}-spray.png", bbox_inches='tight', pad_inches=0)
-    plt.savefig(f"{TH}-spray.pdf", bbox_inches='tight', pad_inches=0)
+    plt.xlabel("経過時間 [秒]", fontsize=14)
+    plt.ylabel("メモリ使用量 [KiB]", fontsize=14)
+    plt.savefig(f"out/{TH}-spray.png", bbox_inches='tight', pad_inches=0)
+    plt.savefig(f"out/{TH}-spray.pdf", bbox_inches='tight', pad_inches=0)
     plt.close("all")
 
 
