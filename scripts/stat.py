@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import japanize_matplotlib
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-import japanize_matplotlib
 
 THS: tuple[str, ...] = ("none", "6859")
 
@@ -50,6 +50,7 @@ def stats() -> None:
                         names=["datetime", "uss"],
                         parse_dates=[0])["uss"].values for f in files
         ])
+        print("max", dfs.max())
         if th == "none":
             label_name = "再起動なし"
         else:
@@ -65,6 +66,9 @@ def stats() -> None:
 
     n, t = a
     print("平均削減率", 1 - (t / n).mean())
+    print("平均使用量:n", n.mean())
+    print("平均使用量:t", t.mean())
+    print("削減率:", 1.0 - t.mean() / n.mean())
 
 
 if __name__ == "__main__":

@@ -59,10 +59,10 @@ def plot_hist(samples: list[float]) -> None:
     ax.set_ylim(0, 11)
     ax.tick_params("both", labelsize=12)
     ax.set_xlabel("メモリ使用量 [KiB]", fontsize=14)
-    ax.set_ylabel("個数", fontsize=14)
+    ax.set_ylabel("度数", fontsize=14)
     ax.plot(bin_edges, hist, ".-")
-    fig.savefig(f"{TH}-median.png", bbox_inches='tight', pad_inches=0)
-    fig.savefig(f"{TH}-median.pdf", bbox_inches='tight', pad_inches=0)
+    fig.savefig(f"out/{TH}-median.png", bbox_inches='tight', pad_inches=0)
+    fig.savefig(f"out/{TH}-median.pdf", bbox_inches='tight', pad_inches=0)
 
 
 def main() -> None:
