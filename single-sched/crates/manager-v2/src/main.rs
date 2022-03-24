@@ -33,6 +33,14 @@ async fn make_result_dir(outdir: impl AsRef<Path>) -> anyhow::Result<PathBuf> {
     Ok(path)
 }
 
+async fn host_mem() -> u32 {
+    let s = tokio::fs::read_to_string("/proc/meminfo").await.unwrap();
+    regex!(r"MemFree:\s*(\d+)\s*kB")
+        .captures_iter(&s)
+        .map(|cap| cap.get(1).unwrap().as_str().parse::<u32>().unwrap())
+        .sum()
+}
+
 #[async_trait]
 trait Uss {
     async fn uss(&self) -> anyhow::Result<u32>;
@@ -93,19 +101,27 @@ impl Target {
     }
 
     fn spawn_child(&self) -> Result<Child> {
-        Command::new("wasmtime")
-            .arg("run")
-            .arg(&self.config.wasi.path)
-            .arg("--mapdir")
-            .args(
-                self.config
-                    .wasi
-                    .mapdirs
-                    .iter()
-                    .map(|mapdir| format!("{}::{}", mapdir.guest, mapdir.host)),
-            )
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+        // Command::new("wasmtime")
+        //     .arg("run")
+        //     .arg(&self.config.wasi.path)
+        //     .arg("--mapdir")
+        //     .args(
+        //         self.config
+        //             .wasi
+        //             .mapdirs
+        //             .iter()
+        //             .map(|mapdir| format!("{}::{}", mapdir.guest, mapdir.host)),
+        //     )
+        //     .stdout(Stdio::piped())
+        //     .stderr(Stdio::piped())
+        //     .kill_on_drop(true)
+        //     .spawn()
+        Command::new("python3")
+            .args(&["-m", "http.server"])
+            .args(&["-d", "static"])
+            .arg("8080")
+            // .stdout(Stdio::piped())
+            // .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
     }
@@ -143,10 +159,11 @@ async fn main() -> anyhow::Result<()> {
             let start = Instant::now();
 
             tokio::select! {
-                _ = sleep_until(start + Duration::from_secs(10)) => {
+                _ = sleep_until(start + Duration::from_secs(1)) => {
                     let uss = target.uss().await?;
+                    let host = host_mem().await;
                     let now = chrono::Local::now().to_rfc3339();
-                    file.write_all(format!("{},{}\n", now, uss).as_bytes())
+                    file.write_all(format!("{},{},{}\n", now, uss, host).as_bytes())
                         .await?;
 
                     if let Some(th) = target.config.threshold {
