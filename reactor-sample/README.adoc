@@ -1,0 +1,19 @@
+= Reactor sample
+
+== How to build
+
+if https://github.com/bytecodealliance/cargo-wasi[cargo wasi] available
+
+[source, shell]
+----
+cargo wasi build --release
+----
+
+or:
+
+[source, shell]
+----
+cargo build --release
+----
+
+The Wasm module is generated within `target/wasm32-wasi/release/`.

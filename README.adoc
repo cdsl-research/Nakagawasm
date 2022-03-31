@@ -10,6 +10,9 @@
 
 === 使っているもの
 
+/simple-wagi::
+under constructed :)
+
 /multi-runner::
 任意のアプリケーションを任意個数並列に動かすためのプログラム．
 特にコマンドライン引数やconfigファイルに対応させていないため，毎度書き換えてコンパイルさせる必要がある．
@@ -33,6 +36,9 @@ WebAssemblyアプリケーションのプログラム．
 実行時に生成されたデータも，このディレクトリ配下に保存されている．
 
 === サンプルコード
+
+/reactor-sample::
+wasm32-wasiのModuleKind::ReactorなモジュールをRustで生成する検証コード．
 
 /redis-sample::
 redis-rsを利用してredisにデータを書いたり読んだりするサンプルコード．
