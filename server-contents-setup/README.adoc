@@ -1,0 +1,27 @@
+= setup static files as http server's contents
+
+== required
+
+- python >= 3.8
+- htmlq
+
+== Hot it use
+
+`all-posts.html`::
+    WordPressの管理ページからがんばってとってくる
+
+以下のように公開されているすべてのページのハイパーリンクを取り出す。
+
+[source, shell]
+----
+sh run.sh > all-post-links.txt
+----
+
+続けて、 all-post-links.txt のページとそこに埋め込まれている画像を、static/ 配下にダウンロードする。
+
+[source, shell]
+----
+python staticgen.py
+----
+
+上記では、htmlの本文とimgタグによる画像の読み込み部分だけを抽出したhtmlにして保存している。
