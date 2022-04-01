@@ -5,10 +5,16 @@ use axum::{
     routing::get,
     Router,
 };
+use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{SocketAddr, TcpListener};
 
 fn reusable_listener(addr: SocketAddr) -> TcpListener {
-    unimplemented!()
+    let sock = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP)).unwrap();
+    sock.set_reuse_port(true).unwrap();
+
+    sock.bind(&addr.into()).unwrap();
+    sock.listen(128).unwrap();
+    sock.into()
 }
 
 #[tokio::main]
