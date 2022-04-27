@@ -1,12 +1,12 @@
-use bytecodec::bytes::BytesEncoder;
-use bytecodec::bytes::RemainingBytesDecoder;
-use bytecodec::io::IoEncodeExt;
-use bytecodec::DecodeExt;
-use bytecodec::Encode;
+use bytecodec::{
+    bytes::{BytesEncoder, RemainingBytesDecoder},
+    io::IoEncodeExt,
+    DecodeExt, Encode,
+};
 use httparse::Status;
-use httpcodec::BodyEncoder;
 use httpcodec::{
-    HttpVersion, ReasonPhrase, Request, RequestDecoder, Response, ResponseEncoder, StatusCode,
+    BodyEncoder, HttpVersion, ReasonPhrase, Request, RequestDecoder, Response, ResponseEncoder,
+    StatusCode,
 };
 use std::io::{Read, Write};
 use wasmedge_wasi_socket::{Shutdown, TcpListener, TcpStream};
