@@ -1,0 +1,7 @@
+[alias]
+b = "wasi build --release"
+c = "wasi check --release"
+t = "wasi test"
+
+[build]
+target = "wasm32-wasi"
