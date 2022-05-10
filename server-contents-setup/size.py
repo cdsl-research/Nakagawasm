@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Final, Iterable
+from typing import Final
 
 TARGETDIR: Final[Path] = Path("static")
 
@@ -14,9 +14,10 @@ def size(p: Path) -> tuple[str, int]:
 
 
 def main() -> None:
-    it: Iterable[tuple[str, int]] = map(size, TARGETDIR.iterdir())
-    it = sorted(it, reverse=True, key=lambda x: x[1])
-    print(*enumerate(it, start=1), sep="\n")
+    it = map(size, TARGETDIR.iterdir())
+    res = sorted(it, reverse=True, key=lambda x: x[1])
+    print(*enumerate(res, start=1), sep="\n")
+    print(f"total: {sum(map(lambda x: x[1], res)):,}")
 
 
 if __name__ == "__main__":
