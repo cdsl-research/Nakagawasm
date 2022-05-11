@@ -27,43 +27,6 @@ fn file_server(path: &str) -> Option<Vec<u8>> {
     }
 }
 
-
-// /// streamからHTTPリクエストのヘッダーとボディの全てを受けとって返す
-// fn _recv_all(stream: &mut TcpStream) -> std::io::Result<Vec<u8>> {
-//     let mut buff = [0u8; 1024];
-//     let mut data = Vec::new();
-
-//     loop {
-//         let n = stream.read(&mut buff)?;
-//         println!("DEBUG: revc {} byte", n);
-//         data.extend_from_slice(&buff[..n]);
-
-//         let mut headers = [httparse::EMPTY_HEADER; 16];
-//         let mut req = httparse::Request::new(&mut headers);
-
-//         match req.parse(&data).unwrap() {
-//             Status::Complete(body_offset) => {
-//                 let content_length: usize =
-//                     if let Some(h) = req.headers.iter().find(|h| h.name.eq("Content-Length")) {
-//                         std::str::from_utf8(h.value).unwrap().parse().unwrap()
-//                     } else {
-//                         break;
-//                     };
-
-//                 if content_length <= data.len() - body_offset {
-//                     break;
-//                 }
-//             }
-//             Status::Partial => {
-//                 println!("partial");
-//                 break;
-//             }
-//         }
-//     }
-
-//     Ok(data)
-// }
-
 fn handle_http(req: Request<String>) -> bytecodec::Result<Response<Vec<u8>>> {
     match file_server(req.request_target().as_str()) {
         Some(v) => Ok(Response::new(
