@@ -1,0 +1,14 @@
+= Samples
+:toc: auto
+
+ライブラリや、ツールを試しに利用したときのコード片。
+
+reactor-sample::
+wasm32-wasiのModuleKind::ReactorなモジュールをRustで生成する検証コード．
+
+redis-sample::
+redis-rsを利用してredisにデータを書いたり読んだりするサンプルコード．
+
+wasm-exec-sample::
+WebAssembly（WASI）モジュールを実行するサンプルコード．
+wasmtimeライブラリを利用して，WebAssemblyモジュールの読み込みから実行までする．

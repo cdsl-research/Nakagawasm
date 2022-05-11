@@ -1,9 +1,13 @@
 = setup static files as http server's contents
 
+研究室のブログ記事をローカルに持ってきて、成形する。
+Webアプリケーションが配信するコンテンツとして利用する。
+
 == required
 
 - python >= 3.8
 - htmlq
+- Bash
 
 == Hot it use
 
