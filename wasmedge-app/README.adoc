@@ -1,0 +1,22 @@
+= WasmEdge App
+
+A implementation of static file server on WasmEdge runtime written in Rust.
+
+== Dependencies
+
+- WasmEdge
+- cargo-wasi
+
+== Build
+
+[source,shell]
+----
+cargo wasi build --release
+----
+
+== Run
+
+[source,shell]
+----
+wasmedge --dir .:<contents directory path> --enable-all target/wasm32-wasi/release/wasmedge-app.wasm
+----
