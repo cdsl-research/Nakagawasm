@@ -5,14 +5,14 @@
 
 
 ### path update
-# cd static
-# for target in $(find . -name index.html); do
-#     p=$(dirname $target)
-#     sed -i "s|<img src=\"|<img src=\"$p/|g" $target
-# done
-
-### make root index.html
 cd static
-for target in $(exa -D -s name); do
-    echo "<a href=${target}>${target}</a>" >> index.html
+for target in $(find . -name index.html); do
+    p=$(dirname $target)
+    sed -i "s|<img src=\".|<img src=\"|g" $target
 done
+
+# ### make root index.html
+# cd static
+# for target in $(exa -D -s name); do
+#     echo "<a href=${target}>${target}</a>" >> index.html
+# done
