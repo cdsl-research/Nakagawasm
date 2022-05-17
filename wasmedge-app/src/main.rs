@@ -82,13 +82,13 @@ fn handle_client(mut stream: TcpStream) -> std::io::Result<()> {
     let mut data = Vec::new();
     encoder.encode_all(&mut data).unwrap();
 
-    stream.write(&data)?;
+    stream.write_all(&data)?;
     stream.shutdown(Shutdown::Both)?;
     Ok(())
 }
 
 fn main() -> std::io::Result<()> {
-    let port = std::env::var("PORT").unwrap_or("1234".to_string());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "1234".to_string());
     println!("new connection at {}", port);
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port), false)?;
     loop {
