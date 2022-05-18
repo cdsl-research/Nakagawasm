@@ -1,45 +1,37 @@
-use std::{
-    process::{Output, Stdio},
-};
-
-use tokio::{process::Command, signal::ctrl_c};
+use domain::{InstanceManifest, WorkerManifest};
+use tokio::signal::ctrl_c;
+use tracing::Level;
 
 mod domain;
 mod repository;
+mod service;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().ok();
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt().with_max_level(Level::DEBUG).init();
 
-    let handle = tokio::spawn(async move {
-        let child = Command::new("wasmedge")
-            .args(&[
-                "--dir",
-                ".:../server-contents-setup/static",
-                "--enable-all",
-                "../wasmedge-app/target/wasm32-wasi/release/wasmedge-app.wasm",
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
+    let instance_manifest = InstanceManifest {
+        args: [
+            "--dir",
+            ".:../server-contents-setup/static",
+            "--enable-all",
+            "../wasmedge-app/target/wasm32-wasi/release/wasmedge-app.wasm",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>(),
+        port: 1234,
+    };
 
-        let Output {
-            status,
-            stderr,
-            stdout,
-        } = child.wait_with_output().await.unwrap();
-
-        let stdout = String::from_utf8(stdout).unwrap();
-        let stderr = String::from_utf8(stderr).unwrap();
-
-        println!("stdout: {stdout}");
-        println!("stderr: {stderr}");
-        println!("status: {status:?}");
-    });
+    let worker_man = WorkerManifest { instance_manifest };
+    let worker = service::worker_create_service(&worker_man).await;
+    let handler = worker.spawn();
 
     ctrl_c().await.ok();
-    handle.abort();
-    handle.await.unwrap_err().is_cancelled();
+
+    handler.stop();
+    handler.wait().await??;
+
+    Ok(())
 }

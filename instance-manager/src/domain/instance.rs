@@ -1,4 +1,9 @@
+use std::process::Output;
+
+use tokio::{process::Child, signal::ctrl_c};
 use ulid::Ulid;
+
+use super::Handler;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InstanceId(Ulid);
@@ -13,38 +18,33 @@ impl InstanceId {
     }
 }
 
-pub trait Instance: Eq {
-    fn id(&self) -> InstanceId;
-    fn create() -> Self;
+#[derive(Debug)]
+pub struct Instance {
+    pub id: InstanceId,
+    child: Child,
+}
+
+impl Instance {
+    pub fn new(id: InstanceId, child: Child) -> Self {
+        Self { id, child }
+    }
+
+    pub fn spawn(mut self) -> Handler<Self, anyhow::Result<Output>> {
+        let handle = tokio::spawn(async move {
+            tracing::debug!("Instance {:?} spawn!", self.id);
+
+            ctrl_c().await.ok();
+            self.child.start_kill()?;
+            let output = self.child.wait_with_output().await?;
+            Ok(output)
+        });
+
+        Handler::new(handle)
+    }
 }
 
 #[derive(Debug)]
-pub struct WasmEdgeInstance {
-    id: InstanceId,
-}
-
-impl WasmEdgeInstance {
-    pub fn new(id: InstanceId) -> Self {
-        Self { id }
-    }
-}
-
-impl Eq for WasmEdgeInstance {}
-
-impl PartialEq for WasmEdgeInstance {
-    fn eq(&self, other: &Self) -> bool {
-        self.id() == other.id()
-    }
-}
-
-impl Instance for WasmEdgeInstance {
-    fn id(&self) -> InstanceId {
-        self.id
-    }
-
-    fn create() -> Self {
-        Self {
-            id: InstanceId::generate(),
-        }
-    }
+pub struct InstanceManifest {
+    pub args: Vec<String>,
+    pub port: u16,
 }
