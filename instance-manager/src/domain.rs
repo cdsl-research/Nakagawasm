@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 use tokio::task::{JoinError, JoinHandle};
 
-pub use instance::{InstanceId, Instance, InstanceManifest};
-pub use metrics::MemoryUsage;
+pub use instance::{Instance, InstanceId, InstanceManifest};
+pub use metrics::{InstanceMemoryMetrics, MemoryUsage};
 pub use worker::{Worker, WorkerId, WorkerManifest};
 
 mod instance;
@@ -39,3 +39,6 @@ where
         self.handle.abort();
     }
 }
+
+#[derive(Debug)]
+pub struct HostMachine;

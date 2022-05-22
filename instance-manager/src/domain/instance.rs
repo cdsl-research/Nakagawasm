@@ -1,4 +1,4 @@
-use std::process::Output;
+use std::{process::Output, fmt};
 
 use tokio::{process::Child, signal::ctrl_c};
 use ulid::Ulid;
@@ -15,6 +15,12 @@ impl InstanceId {
 
     pub fn generate() -> Self {
         Self::new(Ulid::new())
+    }
+}
+
+impl fmt::Display for InstanceId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.to_string())
     }
 }
 
@@ -47,4 +53,14 @@ impl Instance {
 pub struct InstanceManifest {
     pub args: Vec<String>,
     pub port: u16,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_instance_id_to_string() {
+        let id = InstanceId::generate();
+        assert_eq!(id.to_string().len(), 26);
+    }
 }

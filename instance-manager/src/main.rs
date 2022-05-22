@@ -1,16 +1,31 @@
+use std::{fs::File, io::BufWriter};
+
 use domain::{InstanceManifest, WorkerManifest};
-use tokio::signal::ctrl_c;
+use driver::CsvExportDriver;
+use repository::CsvInstanceMemoryRepository;
+use tokio::{signal::ctrl_c, sync::mpsc};
 use tracing::Level;
 
 mod domain;
+mod driver;
 mod repository;
 mod service;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().ok();
-    tracing_subscriber::fmt().with_max_level(Level::DEBUG).init();
+    tracing_subscriber::fmt()
+        .with_max_level(Level::DEBUG)
+        .init();
 
+    let (im_send, im_recv) = mpsc::channel(16);
+    let im_writer = BufWriter::new(File::create("instance_memory.csv")?);
+    let im_exporter = CsvExportDriver::new(im_writer, im_recv).spawn();
+
+
+    let repo = CsvInstanceMemoryRepository::new(im_send);
+
+    let hm_writer = BufWriter::new(File::create("host_memory.csv")?);
     let instance_manifest = InstanceManifest {
         args: [
             "--dir",

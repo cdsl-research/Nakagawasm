@@ -1,4 +1,4 @@
-use std::process::Output;
+use std::{process::Output, fmt};
 
 use tokio::signal::ctrl_c;
 use ulid::Ulid;
@@ -34,6 +34,7 @@ impl Worker {
     }
 }
 
+#[derive(Debug)]
 pub struct WorkerManifest {
     pub instance_manifest: InstanceManifest,
 }
@@ -48,5 +49,22 @@ impl WorkerId {
 
     pub fn generate() -> Self {
         Self::new(Ulid::new())
+    }
+}
+
+impl fmt::Display for WorkerId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_worker_id_to_string() {
+        let id = WorkerId::generate();
+        assert_eq!(id.to_string().len(), 26);
     }
 }
