@@ -101,27 +101,15 @@ impl Target {
     }
 
     fn spawn_child(&self) -> Result<Child> {
-        // Command::new("wasmtime")
-        //     .arg("run")
-        //     .arg(&self.config.wasi.path)
-        //     .arg("--mapdir")
-        //     .args(
-        //         self.config
-        //             .wasi
-        //             .mapdirs
-        //             .iter()
-        //             .map(|mapdir| format!("{}::{}", mapdir.guest, mapdir.host)),
-        //     )
-        //     .stdout(Stdio::piped())
-        //     .stderr(Stdio::piped())
-        //     .kill_on_drop(true)
-        //     .spawn()
-        Command::new("python3")
-            .args(&["-m", "http.server"])
-            .args(&["-d", "static"])
-            .arg("8080")
-            // .stdout(Stdio::piped())
-            // .stderr(Stdio::piped())
+        Command::new("wasmedge")
+            .args(&[
+                "--dir",
+                ".:../../server-contents-setup/static",
+                "--enable-all",
+                "../../wasmedge-app/target/wasm32-wasi/release/wasmedge-app.wasm",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
     }
