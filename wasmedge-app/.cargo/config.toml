@@ -1,6 +1,6 @@
 [alias]
 b = "wasi build --release"
-c = "wasi check --release"
+c = "wasi check"
 t = "wasi test"
 
 [build]
