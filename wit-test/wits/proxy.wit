@@ -1,0 +1,3 @@
+onhttp: func(path: string, auth: string, method: string) -> string
+
+ontick: func() -> string
