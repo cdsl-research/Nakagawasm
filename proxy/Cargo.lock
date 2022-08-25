@@ -305,7 +305,6 @@ version = "0.1.0"
 dependencies = [
  "hyper",
  "hyper-reverse-proxy",
- "lazy_static",
  "tokio",
 ]
 

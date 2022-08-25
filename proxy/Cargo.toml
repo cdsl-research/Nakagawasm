@@ -8,5 +8,4 @@ edition = "2021"
 [dependencies]
 hyper = { version = "0.14.20", features = ["full"] }
 hyper-reverse-proxy = "0.5.1"
-lazy_static = "1.4.0"
 tokio = { version = "1.20.1", features = ["full"] }
