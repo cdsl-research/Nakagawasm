@@ -7,5 +7,9 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
+cookie = "*"
+hyper = { version = "0.14.20", features = ["full"] }
+hyper-reverse-proxy = "0.5.1"
+tokio = { version = "1.20.1", features = ["full"] }
 wit-bindgen-wasmtime = { git = "https://github.com/bytecodealliance/wit-bindgen.git", tag = "v0.2.0" }
 wasmtime-wasi = "0.39.1"

@@ -6,43 +6,48 @@ use ulid::Ulid;
 
 wit_bindgen_rust::export!("../wits/proxy.wit");
 
-// static TTL: Lazy<Duration> = Lazy::new(|| Duration::minutes(5));
+static TTL: Lazy<Duration> = Lazy::new(|| Duration::minutes(5));
 
-// static CACHE: Lazy<Mutex<HashMap<String, DateTime<Utc>>>> = Lazy::new(|| {
-//     let cache = HashMap::new();
-//     Mutex::new(cache)
-// });
+static CACHE: Lazy<Mutex<HashMap<String, DateTime<Utc>>>> = Lazy::new(|| {
+    let cache = HashMap::new();
+    Mutex::new(cache)
+});
 
 struct Proxy;
 
-// impl Proxy {
-//     fn get_new_token() -> String {
-//         let token = Ulid::new().to_string();
-//         token + generate_random_string(1024 - ulid::ULID_LEN).as_str()
-//     }
+impl Proxy {
+    fn get_new_token() -> String {
+        let token = Ulid::new().to_string();
+        token + generate_random_string(1024 - ulid::ULID_LEN).as_str()
+    }
 
-//     fn login() -> String {
-//         let token = Proxy::get_new_token();
+    fn login() -> String {
+        let token = Proxy::get_new_token();
 
-//         let mut c = CACHE.lock().unwrap();
-//         let _ = c.insert(token.clone(), Utc::now() + *TTL);
+        let mut c = CACHE.lock().unwrap();
+        let _ = c.insert(token.clone(), Utc::now() + *TTL);
 
-//         token
-//     }
+        token
+    }
 
-//     // fn logout() -> String {
-//     //     String::from("OK")
-//     // }
-// }
+    fn logout(token: &str) {
+        let mut c = CACHE.lock().unwrap();
+        c.remove(token);
+    }
+}
 
 impl proxy::Proxy for Proxy {
-    fn onhttp(_path: String, _auth: String, _method: String) -> String {
-        // match path.as_str().trim() {
-        //     "/login" => Self::login(),
-        //     // "/logout" => Self::logout(),
-        //     _ => todo!(),
-        // }
-        generate_random_string(1024)
+    fn onhttp(path: String, auth: String, _method: String) -> String {
+        match path.as_str().trim() {
+            "/login" => Self::login(),
+            "/logout" => {
+                Self::logout(&auth);
+                // CACHE.lock().unwrap().len().to_string()
+                String::from("OK")
+            }
+            // TODO
+            _ => "NOT IMPLEMENTED".into(),
+        }
     }
 
     fn ontick() -> String {
