@@ -1,12 +1,17 @@
+use chrono::Utc;
 use cookie::{Cookie, CookieJar};
 use hyper::http::HeaderValue;
 use hyper::server::conn::AddrStream;
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use hyper::{Body, Request, Response, Server, StatusCode};
 use proxy::{Proxy, ProxyData};
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use std::{convert::Infallible, net::SocketAddr};
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
+use tracing::{info, debug};
 use wasmtime_wasi::WasiCtxBuilder;
 use wit_bindgen_wasmtime::wasmtime::{Config, Engine, Instance, Linker, Module, Store};
 
@@ -18,8 +23,6 @@ struct Context {
 }
 
 struct Wasm {
-    // config: Config,
-    // engine: Engine,
     store: Store<Context>,
     instance: Instance,
     pub proxy: Proxy<Context>,
@@ -55,8 +58,6 @@ impl Wasm {
         let proxy = Proxy::new(&mut store, &instance, |cx| &mut cx.proxy).unwrap();
 
         Ok(Self {
-            // config,
-            // engine,
             store,
             instance,
             proxy,
@@ -87,7 +88,7 @@ impl Wasm {
     }
 }
 
-fn debug_request(_req: Request<Body>, res: String) -> Result<Response<Body>, anyhow::Error> {
+fn make_response(_req: Request<Body>, res: String) -> Result<Response<Body>, anyhow::Error> {
     let mut response = Response::new(Body::from(res.to_string()));
     response.headers_mut().append(
         "Set-Cookie",
@@ -101,6 +102,8 @@ async fn handle(
     req: Request<Body>,
     wasm: Arc<Mutex<Wasm>>,
 ) -> Result<Response<Body>, anyhow::Error> {
+    info!(req=?req);
+    // info!(path=?req.uri().path(), method=?req.method());
     if req.uri().path().starts_with("/target/first") {
         // will forward requests to port 13901
         match hyper_reverse_proxy::call(client_ip, "http://127.0.0.1:13901", req).await {
@@ -140,14 +143,41 @@ async fn handle(
             .lock()
             .unwrap()
             .onhttp(req.uri().path(), auth, req.method().as_str())?;
-        debug_request(req, result)
+        make_response(req, result)
     }
 }
 
 #[tokio::main]
 async fn main() {
+    let timestamp = Utc::now().to_rfc3339();
+    let mut memory_log = File::create(format!("memory_{}.log", timestamp))
+        .await
+        .unwrap();
+    let event_log = File::create(format!("event_{}.log", timestamp))
+        .await
+        .unwrap();
+    let subscriber = tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_writer(Mutex::new(event_log.into_std().await))
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+
     let wasm = Wasm::new().unwrap();
     let wasm = Arc::new(Mutex::new(wasm));
+
+    let wasm_ = wasm.clone();
+    tokio::spawn(async move {
+        loop {
+            // memory_log.w
+            tokio::time::sleep(Duration::new(10, 0)).await;
+            let memsize = wasm_.lock().unwrap().memory_size().unwrap();
+            memory_log
+                .write_all(format!("{},{}\n", Utc::now().to_rfc3339(), memsize).as_bytes())
+                .await
+                .unwrap();
+        }
+    });
 
     let bind_addr = "127.0.0.1:8000";
     let addr: SocketAddr = bind_addr.parse().expect("Could not parse ip:port.");
@@ -164,7 +194,7 @@ async fn main() {
 
     let server = Server::bind(&addr).serve(make_svc);
 
-    println!("Running server on {:?}", addr);
+    debug!("Running server on {:?}", addr);
 
     if let Err(e) = server.await {
         eprintln!("server error: {}", e);

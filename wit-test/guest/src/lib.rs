@@ -42,8 +42,8 @@ impl proxy::Proxy for Proxy {
             "/login" => Self::login(),
             "/logout" => {
                 Self::logout(&auth);
-                // CACHE.lock().unwrap().len().to_string()
-                String::from("OK")
+                CACHE.lock().unwrap().len().to_string()
+                // String::from("OK")
             }
             // TODO
             _ => "NOT IMPLEMENTED".into(),
