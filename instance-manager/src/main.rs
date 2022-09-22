@@ -22,7 +22,6 @@ async fn main() -> anyhow::Result<()> {
     let im_writer = BufWriter::new(File::create("instance_memory.csv")?);
     let im_exporter = CsvExportDriver::new(im_writer, im_recv).spawn();
 
-
     let repo = CsvInstanceMemoryRepository::new(im_send);
 
     let hm_writer = BufWriter::new(File::create("host_memory.csv")?);
